@@ -1,8 +1,9 @@
-import inspect
 import logging
+import os
 import time
 
 import coloredlogs
+
 
 def enable_sublogger(logger_name):
     """Enable a sub-logger by name.
@@ -34,7 +35,7 @@ def setup_logging(logfile="app.log", utc_time=False, root_level=logging.INFO):
     date_fmt = "%y-%m-%d %H:%M:%S"
 
     # Create a coloredlog formatter for command line logging
-    coloredFormatter = coloredlogs.ColoredFormatter(
+    colored_formatter = coloredlogs.ColoredFormatter(
         fmt=logging_fmt,
         datefmt=date_fmt,
         style="{",
@@ -60,20 +61,46 @@ def setup_logging(logfile="app.log", utc_time=False, root_level=logging.INFO):
     # Create a simple formatter for other output
     formatter = logging.Formatter(fmt=logging_fmt, datefmt=date_fmt, style="{")
 
-    formatters = [coloredFormatter, formatter]
+    formatters = [colored_formatter, formatter]
     if utc_time:
         for f in formatters:
             f.converter = time.gmtime
 
-    # Add the colored logs to the logger
-    h = logging.StreamHandler()
-    h.setFormatter(coloredFormatter)
-    logger.addHandler(h)
+    # Reuse handlers installed by this function so repeated setup calls do not
+    # duplicate output. Leave handlers owned by libraries or callers alone.
+    console_handler = next(
+        (
+            handler
+            for handler in logger.handlers
+            if getattr(handler, "_vwap_wave_console_handler", False)
+        ),
+        None,
+    )
+    if console_handler is None:
+        console_handler = logging.StreamHandler()
+        console_handler._vwap_wave_console_handler = True
+        logger.addHandler(console_handler)
+    console_handler.setFormatter(colored_formatter)
 
-    # Add file logging to the logger
-    h = logging.FileHandler(logfile, mode="w")
-    h.setFormatter(formatter)
-    logger.addHandler(h)
+    desired_logfile = os.path.abspath(logfile)
+    file_handler = next(
+        (
+            handler
+            for handler in logger.handlers
+            if getattr(handler, "_vwap_wave_file_handler", False)
+        ),
+        None,
+    )
+    if file_handler is not None and file_handler.baseFilename != desired_logfile:
+        logger.removeHandler(file_handler)
+        file_handler.close()
+        file_handler = None
+
+    if file_handler is None:
+        file_handler = logging.FileHandler(desired_logfile, mode="w")
+        file_handler._vwap_wave_file_handler = True
+        logger.addHandler(file_handler)
+    file_handler.setFormatter(formatter)
 
     # Set default logging level
     logger.setLevel(root_level)

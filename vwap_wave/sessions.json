@@ -1,0 +1,34 @@
+{
+  "profiles": {
+    "futures_2200_utc": {
+      "start": "22:00",
+      "timezone": "UTC"
+    }
+  },
+  "symbols": {
+    "/ES": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "13:30",
+        "duration_minutes": 60,
+        "timezone": "UTC"
+      }
+    },
+    "/CL": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "13:00",
+        "duration_minutes": 60,
+        "timezone": "UTC"
+      }
+    },
+    "/GC": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "12:20",
+        "duration_minutes": 60,
+        "timezone": "UTC"
+      }
+    }
+  }
+}
