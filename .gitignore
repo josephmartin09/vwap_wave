@@ -1,6 +1,6 @@
 .env
 *.log
+__pycache__/
 
 /Pipfile
 /token.json
-

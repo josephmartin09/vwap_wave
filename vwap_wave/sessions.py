@@ -12,6 +12,11 @@ class SessionSchedule:
         self._profiles = profiles
         self._symbols = symbols
 
+    @property
+    def symbols(self):
+        """Return the symbols configured by the session file."""
+        return tuple(self._symbols)
+
     @classmethod
     def from_json(cls, path=DEFAULT_CONFIG_PATH):
         with Path(path).open() as config_file:

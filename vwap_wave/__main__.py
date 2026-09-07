@@ -4,17 +4,19 @@ import time
 import pandas as pd
 
 from . import log
+from .catalog import INDICATOR_COLUMNS, SYMBOLS, require_catalog_symbols
+from .commands import (
+    ReplaceAlertConditions,
+    ShowAlertConditions,
+    UnixCommandServer,
+)
 from .schwab.feed import SchwabBarFeed
 from .sessions import SessionSchedule
 from .ta.initial_balance import INITIAL_BALANCE_COLUMNS, calculate_initial_balance
 from .ta.volume_profile import VOLUME_PROFILE_COLUMNS, calculate_volume_profile
 from .ta.vwap import SESSION_VWAP_COLUMNS, calculate_session_vwap
+from .telegram_alert import alerts_from_env
 
-SYMBOLS = [
-    "/ES",
-    "/CL",
-    "/GC"
-]
 
 class VwapWaveApp:
     BAR_COLUMNS = ["open", "high", "low", "close", "volume"]
@@ -26,8 +28,11 @@ class VwapWaveApp:
         session_schedule=None,
         volume_profile_bins=100,
         value_area_percent=0.70,
+        command_server=None,
+        telegram_alerts=None,
     ):
-        self.symbols = list(symbols) if symbols is not None else []
+        requested_symbols = SYMBOLS if symbols is None else symbols
+        self.symbols = list(require_catalog_symbols(requested_symbols))
         self.reconnect_delay_seconds = reconnect_delay_seconds
         self.session_schedule = (
             SessionSchedule.from_json()
@@ -36,9 +41,18 @@ class VwapWaveApp:
         )
         self.volume_profile_bins = volume_profile_bins
         self.value_area_percent = value_area_percent
+        self.command_server = command_server
         self.frames = {}
         self.volume_profiles = {}
+        self.alert_conditions = {symbol: () for symbol in self.symbols}
+        self._last_alerted_bars = {}
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        self.telegram_alerts = (
+            alerts_from_env(self.symbols, logger=self.logger)
+            if telegram_alerts is None
+            else telegram_alerts
+        )
 
     def candles_to_df(self, candles):
         if not candles:
@@ -112,7 +126,7 @@ class VwapWaveApp:
     def on_live_bar(self, bar):
         self.append_live_bar(bar)
         self.apply_indicators(bar["symbol"])
-        self.logger.info(
+        self.logger.debug(
             "LIVE %s @ %s O=%s H=%s L=%s C=%s vol=%s",
             bar["symbol"],
             bar["datetime"],
@@ -122,6 +136,114 @@ class VwapWaveApp:
             bar["close"],
             bar["volume"],
         )
+        self.evaluate_alert_conditions(bar["symbol"])
+
+    def evaluate_alert_conditions(self, symbol):
+        frame = self.frames[symbol]
+        if frame.empty:
+            return
+
+        row = frame.iloc[-1]
+        low_price = row["low"]
+        high_price = row["high"]
+        if pd.isna(low_price) or pd.isna(high_price):
+            return
+
+        bar_timestamp = frame.index[-1]
+        for condition in self.alert_conditions[symbol]:
+            if condition not in row.index or pd.isna(row[condition]):
+                continue
+
+            level = row[condition]
+            if not low_price <= level <= high_price:
+                continue
+
+            alert_key = (symbol, condition)
+            if self._last_alerted_bars.get(alert_key) == bar_timestamp:
+                continue
+            self._last_alerted_bars[alert_key] = bar_timestamp
+            self.logger.warning(
+                "ALERT %s touched %s @ %s level=%s range=%s-%s",
+                symbol,
+                condition,
+                bar_timestamp,
+                level,
+                low_price,
+                high_price,
+            )
+            telegram_alert = self.telegram_alerts.get(symbol)
+            if telegram_alert is not None:
+                telegram_alert.send(
+                    self.format_alert_message(
+                        symbol,
+                        condition,
+                        bar_timestamp,
+                        level,
+                        low_price,
+                        high_price,
+                    )
+                )
+
+    @staticmethod
+    def format_alert_message(
+        symbol,
+        condition,
+        bar_timestamp,
+        level,
+        low_price,
+        high_price,
+    ):
+        return (
+            f"🔔 {symbol} touched {condition}\n"
+            f"Time: {bar_timestamp.isoformat()}\n"
+            f"Level: {level}\n"
+            f"Bar range: {low_price}–{high_price}"
+        )
+
+    def process_cli_commands(self):
+        if self.command_server is None:
+            return
+
+        while True:
+            received = self.command_server.receive_nowait()
+            if received is None:
+                return
+            if received.rejection is not None:
+                self.logger.warning("COMMAND REJECTED: %s", received.rejection)
+                continue
+
+            command = received.command
+            rejection = self.validate_cli_command(command)
+            if rejection is not None:
+                self.logger.warning("COMMAND REJECTED: %s", rejection)
+                continue
+
+            self.apply_cli_command(command)
+
+    def validate_cli_command(self, command):
+        if isinstance(command, ReplaceAlertConditions):
+            if command.symbol not in self.symbols:
+                return "unknown symbol: {}".format(command.symbol)
+            for condition in command.conditions:
+                if condition not in INDICATOR_COLUMNS:
+                    return "unknown indicator: {}".format(condition)
+            return None
+        if isinstance(command, ShowAlertConditions):
+            if command.symbol not in self.symbols:
+                return "unknown symbol: {}".format(command.symbol)
+            return None
+        return "unsupported command"
+
+    def apply_cli_command(self, command):
+        self.logger.info("COMMAND ACK: %r", command)
+
+        if isinstance(command, ReplaceAlertConditions):
+            self.alert_conditions[command.symbol] = command.conditions
+            self._last_alerted_bars = {
+                key: timestamp
+                for key, timestamp in self._last_alerted_bars.items()
+                if key[0] != command.symbol
+            }
 
     def load_history(self, feed):
         self.frames = {}
@@ -138,7 +260,6 @@ class VwapWaveApp:
             frame = self.candles_to_df(raw)
             self.frames[symbol] = frame
             self.apply_indicators(symbol)
-            self.logger.info("\n%s", frame.tail(10))
             self.logger.info("Historical %s data loaded and printed.", symbol)
 
     def run_feed(self):
@@ -148,6 +269,7 @@ class VwapWaveApp:
                 "Polling live 1m updates for %s", ", ".join(self.symbols)
             )
             while True:
+                self.process_cli_commands()
                 bar = feed.poll(timeout=1.0)
                 if bar is not None:
                     self.on_live_bar(bar)
@@ -169,7 +291,8 @@ class VwapWaveApp:
 
 def main():
     log.setup_logging()
-    VwapWaveApp(SYMBOLS).run()
+    with UnixCommandServer() as command_server:
+        VwapWaveApp(SYMBOLS, command_server=command_server).run()
 
 
 if __name__ == "__main__":

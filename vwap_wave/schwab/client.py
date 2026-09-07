@@ -8,6 +8,7 @@ import httpx
 from schwab import auth, streaming
 
 from vwap_wave import log
+from vwap_wave.catalog import require_catalog_symbols
 
 LOGGER = logging.getLogger(__name__)
 log.disable_sublogger("httpx2")
@@ -35,6 +36,7 @@ class SchwabClient:
             self._sclient = streaming.StreamClient(self._client)
 
     async def get_historical_1m(self, symbol):
+        require_catalog_symbols((symbol,))
         LOGGER.debug(f"Requesting historical 1m candles for {symbol}")
         resp = await self._client.get_price_history_every_minute(
             symbol, need_extended_hours_data=True
@@ -55,18 +57,20 @@ class SchwabClient:
         return candles
 
     async def get_historical_1m_for_symbols(self, symbols):
-        symbols = list(symbols)
+        symbols = list(require_catalog_symbols(symbols))
         candles = await asyncio.gather(
             *(self.get_historical_1m(symbol) for symbol in symbols)
         )
         return dict(zip(symbols, candles))
 
     async def subscribe_live_1m(self, symbol, on_bar=None):
+        require_catalog_symbols((symbol,))
         await self.subscribe_live_1m_for_symbols([symbol], on_bar=on_bar)
 
     async def subscribe_live_1m_for_symbols(
         self, symbols, on_bar=None, on_ready=None
     ):
+        symbols = require_catalog_symbols(symbols)
         if on_bar is None:
             on_bar = lambda bar: None
 

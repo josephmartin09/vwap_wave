@@ -3,6 +3,8 @@ import queue
 import threading
 from concurrent.futures import TimeoutError as FutureTimeoutError
 
+from ..catalog import require_catalog_symbols
+
 
 class FeedError(RuntimeError):
     """Base exception for failures at the synchronous feed boundary."""
@@ -25,7 +27,7 @@ class SchwabBarFeed:
     """Synchronous, polling interface to the asynchronous Schwab client."""
 
     def __init__(self, symbols, client_factory=None):
-        self.symbols = tuple(symbols)
+        self.symbols = require_catalog_symbols(symbols)
         if not self.symbols:
             raise ValueError("At least one symbol is required")
 
