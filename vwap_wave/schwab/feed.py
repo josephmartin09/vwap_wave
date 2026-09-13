@@ -3,7 +3,7 @@ import queue
 import threading
 from concurrent.futures import TimeoutError as FutureTimeoutError
 
-from ..catalog import require_catalog_symbols
+from ..config import require_catalog_symbols
 
 
 class FeedError(RuntimeError):

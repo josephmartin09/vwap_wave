@@ -1,6 +1,6 @@
 import json
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 
@@ -8,20 +8,32 @@ DEFAULT_CONFIG_PATH = Path(__file__).with_name("sessions.json")
 
 
 class SessionSchedule:
-    def __init__(self, profiles, symbols):
+    def __init__(self, profiles=None, symbols=None):
+        if profiles is None or symbols is None:
+            with DEFAULT_CONFIG_PATH.open() as config_file:
+                config = json.load(config_file)
+            profiles = config["profiles"] if profiles is None else profiles
+            symbols = config["symbols"] if symbols is None else symbols
         self._profiles = profiles
         self._symbols = symbols
-
-    @property
-    def symbols(self):
-        """Return the symbols configured by the session file."""
-        return tuple(self._symbols)
 
     @classmethod
     def from_json(cls, path=DEFAULT_CONFIG_PATH):
         with Path(path).open() as config_file:
             config = json.load(config_file)
         return cls(config["profiles"], config["symbols"])
+
+    @property
+    def symbols(self):
+        """Return the symbols configured by the session file."""
+        return tuple(self._symbols)
+
+    def require_symbols(self, symbols):
+        requested = (symbols,) if isinstance(symbols, str) else tuple(symbols)
+        unknown = [symbol for symbol in requested if symbol not in self.symbols]
+        if unknown:
+            raise ValueError("Symbols not configured: " + ", ".join(unknown))
+        return requested
 
     def start_for(self, symbol, timestamp):
         """Return the most recent configured session start for a timestamp."""
@@ -92,3 +104,8 @@ class SessionSchedule:
             window_start.astimezone(timezone.utc),
             window_end.astimezone(timezone.utc),
         )
+
+
+DEFAULT_SCHEDULE = SessionSchedule.from_json()
+SYMBOLS = DEFAULT_SCHEDULE.symbols
+require_catalog_symbols = DEFAULT_SCHEDULE.require_symbols

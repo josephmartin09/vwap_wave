@@ -4,3 +4,4 @@ __pycache__/
 
 /Pipfile
 /token.json
+/*.csv

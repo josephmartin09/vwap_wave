@@ -1,7 +1,8 @@
 import cmd
 import shlex
 
-from .catalog import INDICATOR_COLUMNS, SYMBOLS
+from .alerts import ALERT_CONDITIONS
+from .config import SYMBOLS
 from .commands import (
     ReplaceAlertConditions,
     ShowAlertConditions,
@@ -10,7 +11,7 @@ from .commands import (
 
 
 class VwapWaveCli(cmd.Cmd):
-    intro = "Type 'help' for commands. Indicator names match dataframe columns."
+    intro = "Type 'help' for commands. Conditions include indicator touches and higher-timeframe sweeps."
     prompt = "vwap> "
 
     def __init__(self, command_client, symbols, indicator_names, **kwargs):
@@ -147,7 +148,7 @@ class VwapWaveCli(cmd.Cmd):
         self.stdout.write("\n".join(self.symbols) + "\n")
 
     def do_indicators(self, argument):
-        """List exact dataframe indicator names accepted by 'set'."""
+        """List alert condition names accepted by 'set'."""
         del argument
         self.stdout.write("\n".join(self.indicator_names) + "\n")
 
@@ -172,7 +173,7 @@ class VwapWaveCli(cmd.Cmd):
 
 
 def main():
-    VwapWaveCli(UnixCommandClient(), SYMBOLS, INDICATOR_COLUMNS).cmdloop()
+    VwapWaveCli(UnixCommandClient(), SYMBOLS, ALERT_CONDITIONS).cmdloop()
 
 
 if __name__ == "__main__":

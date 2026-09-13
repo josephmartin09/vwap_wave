@@ -1,0 +1,74 @@
+{
+  "profiles": {
+    "futures_2200_utc": {
+      "start": "22:00",
+      "timezone": "UTC"
+    }
+  },
+  "symbols": {
+    "/ES": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "09:30",
+        "duration_minutes": 60,
+        "timezone": "America/New_York"
+      }
+    },
+    "/CL": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "09:00",
+        "duration_minutes": 60,
+        "timezone": "America/New_York"
+      }
+    },
+    "/GC": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "08:20",
+        "duration_minutes": 60,
+        "timezone": "America/New_York"
+      }
+    },
+    "/ZB": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "08:20",
+        "duration_minutes": 60,
+        "timezone": "America/New_York"
+      }
+    },
+    "/ZN": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "08:20",
+        "duration_minutes": 60,
+        "timezone": "America/New_York"
+      }
+    },
+    "/NG": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "09:00",
+        "duration_minutes": 60,
+        "timezone": "America/New_York"
+      }
+    },
+    "/ZC": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "09:30",
+        "duration_minutes": 60,
+        "timezone": "America/New_York"
+      }
+    },
+    "/ZS": {
+      "session_profile": "futures_2200_utc",
+      "initial_balance": {
+        "start": "09:30",
+        "duration_minutes": 60,
+        "timezone": "America/New_York"
+      }
+    }
+  }
+}

@@ -1,0 +1,359 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © josephmartin09
+//@version=6
+
+//******************************************************************************
+// Constants and Types
+const string VERSION = "0.1.0"
+
+// Default Lookback Settings
+const int BARS_BACK_MIN = 500
+const int BARS_BACK_MAX = 5000
+const int BARS_BACK_DEFAULT = 2000
+
+// Default Hoagie Settings
+const bool ENABLE_HOAGIES_DEFAULT = true
+const color HOAGIE_COLOR_DEFAULT = color.gray
+const int HOAGIE_OPACITY_DEFAULT = 75
+
+// Default Leg Settings
+const bool ENABLE_LEGS_DEFAULT = true
+const int LEG_WIDTH_DEFAULT = 1
+const color LEG_COLOR_DEFAULT = #e8d8c3
+
+// Default Trend Settings
+const bool ENABLE_TRENDS_DEFAULT = true
+const color TREND_UP_COLOR_DEFAULT = color.green
+const color TREND_DOWN_COLOR_DEFAULT = color.red
+const color SWEEP_COLOR_DEFAULT = color.purple
+
+// Data Types for Gann Logic
+const int UP = 1
+const int DOWN = -1
+const int HOAGIE_MIN_INSIDE_BARS = 2
+const int TREND_ESTABLISHED = -100
+const int TREND_CONTESTED = -101
+
+type Bar
+    int time
+    float open
+    float high
+    float low
+    float close
+
+type Hoagie
+    int startTime
+    int endTime
+    float low
+    float high
+    int insideBarCnt
+
+type Leg
+    int dir
+    int startTime
+    int endTime
+    float low
+    float high
+
+type Trend
+    int dir
+    int startTime
+    int endTime
+    float contLevel
+    float changeLevel
+    float prevContLevel
+    float nextChangeLevel
+    int state
+    // Pending sweep extreme; cleared when the return leg promotes it to changeLevel.
+    float sweepLevel = na
+
+
+//******************************************************************************
+// Indicator Declaration
+indicator("Opus PA (" + VERSION + ")", overlay = true, max_bars_back = BARS_BACK_MAX, max_boxes_count = 500, max_lines_count = 500)
+
+//******************************************************************************
+// User Inputs
+// General Settings
+inputMaxBarsBack = input.int(title="Max Bars Back", defval=BARS_BACK_DEFAULT, minval=BARS_BACK_MIN, maxval=BARS_BACK_MAX, group="Settings")
+
+// Hoagie Settings
+inputEnableHoagies = input.bool(ENABLE_HOAGIES_DEFAULT, "Enable Hoagies", group = "Settings")
+inputHoagieColor = input.color(HOAGIE_COLOR_DEFAULT, "Hoagie Color", group = "Hoagies")
+inputHoagieOpacity = input.int(HOAGIE_OPACITY_DEFAULT, "Hoagie Opacity", minval = 10, maxval=75, group = "Hoagies")
+
+// Leg Settings
+inputEnableLegs = input.bool(ENABLE_LEGS_DEFAULT, "Enable Legs", group = "Settings")
+inputLegWidth = input.int(LEG_WIDTH_DEFAULT, "Leg Width", minval = 1, maxval = 5, group = "Legs")
+inputLegColor = input.color(LEG_COLOR_DEFAULT, "Leg Color", group = "Legs")
+
+// Trend Settings
+inputEnableTrends = input.bool(ENABLE_TRENDS_DEFAULT, "Enable Trends", group = "Settings")
+inputTrendUpColor = input.color(TREND_UP_COLOR_DEFAULT, "Trend Up Color", group = "Trends")
+inputTrendDownColor = input.color(TREND_DOWN_COLOR_DEFAULT, "Trend Down Color", group = "Trends")
+inputSweepColor = input.color(SWEEP_COLOR_DEFAULT, "Sweep Color", group = "Trends")
+
+//******************************************************************************
+// General Helpers
+is_last_bar() =>
+    ((not barstate.isconfirmed) and barstate.islast) or (barstate.islastconfirmedhistory and barstate.islast)
+
+//******************************************************************************
+// Price Action Helpers
+calculate_bars(barData) =>
+    int[] barDirs = array.new<int>()
+    Hoagie[] hoagies = array.new<Hoagie>()
+
+    // Calculate the direction of the first bar
+    Bar currBar = array.get(barData, 0)
+    Bar prevBar = na
+    if currBar.open <= currBar.close
+        array.push(barDirs, UP)
+    else
+        array.push(barDirs, DOWN)
+
+    bool hoagieActive = false
+    Hoagie currHoagie = na
+    for i = 1 to array.size(barData) - 1
+        prevBar := currBar
+        currBar := array.get(barData, i)
+        if not hoagieActive
+            // Up Bar
+            if (currBar.high > prevBar.high) and (currBar.low > prevBar.low)
+                array.push(barDirs, UP)
+            // Down Bar
+            else if (currBar.low < prevBar.low) and (currBar.high < prevBar.high)
+                array.push(barDirs, DOWN)
+            // Inside Bar (creates hoagie)
+            else if (currBar.high <= prevBar.high) and (currBar.low >= prevBar.low)
+                array.push(barDirs, array.get(barDirs, array.size(barDirs) - 1))
+                currHoagie := Hoagie.new(startTime=prevBar.time, endTime=currBar.time, low=prevBar.low, high=prevBar.high, insideBarCnt = 1)
+                hoagieActive := true
+            // Outside Bar
+            else
+                array.push(barDirs, array.get(barDirs, array.size(barDirs) - 1))
+        // Currently within a hoagie
+        else
+            currHoagie.endTime := currBar.time
+            // Up Bar
+            if (currBar.high > currHoagie.high) and (currBar.low >= currHoagie.low)
+                array.push(barDirs, UP)                
+                hoagieActive := false
+            // Down Bar
+            else if (currBar.low < currHoagie.low) and (currBar.high <= currHoagie.high)
+                array.push(barDirs, DOWN)
+                hoagieActive := false
+            // Inside Bar
+            else if (currBar.high <= currHoagie.high) and (currBar.low >= currHoagie.low)
+                array.push(barDirs, array.get(barDirs, array.size(barDirs) - 1))
+                currHoagie.insideBarCnt += 1
+                // This is a special case: we're drawing the live/current bar. insideBarCnt needs to be
+                // strictly greater than HOAGIE_MIN_INSIDE_BARS because the last bar doesn't count toward the hoagie
+                if (i == array.size(barData) - 1) and (currHoagie.insideBarCnt > HOAGIE_MIN_INSIDE_BARS)
+                    hoagieActive := false
+            // Outside Bar
+            else
+                array.push(barDirs, array.get(barDirs, array.size(barDirs) - 1))
+                hoagieActive := false
+            
+            if not hoagieActive
+                if currHoagie.insideBarCnt >= HOAGIE_MIN_INSIDE_BARS
+                    array.push(hoagies, currHoagie)
+                currHoagie := na
+
+    // Return
+    [barDirs, hoagies]
+
+calculate_legs(barData, barDirs) =>
+    Leg[] legs = array.new<Leg>()
+
+    // Determine the first leg direction by just assuming it's the direction of the bar
+    Bar currBar = array.get(barData, 0)
+    int currDir = array.get(barDirs, 0)
+    Leg currLeg = Leg.new(currDir, currBar.time, currBar.time, currBar.low, currBar.high)
+
+    // Add each previous leg once a change in direction is detected
+    for i = 1 to array.size(barData) - 1
+        currBar := array.get(barData, i)
+        currDir := array.get(barDirs, i)
+        if currDir != currLeg.dir
+            legs.push(currLeg)
+            if currDir == UP
+                currLeg := Leg.new(currDir, currLeg.endTime, currBar.time, currLeg.low, currBar.high)
+            else
+                currLeg := Leg.new(currDir, currLeg.endTime, currBar.time, currBar.high, currLeg.high)
+
+        if currDir == UP
+            if currBar.high > currLeg.high
+                currLeg.endTime := currBar.time
+                currLeg.high := currBar.high
+        else
+            if currBar.low < currLeg.low
+                currLeg.endTime := currBar.time
+                currLeg.low := currBar.low
+
+    // Add the last leg
+    array.push(legs, currLeg)
+    legs
+
+calculate_trends(legs) =>
+    Trend[] trends = array.new<Trend>()
+
+    // To start the trend, we assume the first leg direction is the defining trend
+    Leg currLeg = array.get(legs, 0)
+    Trend currTrend = na
+    if currLeg.dir == UP
+        currTrend := Trend.new(dir = UP, startTime = currLeg.startTime, endTime = currLeg.endTime, contLevel = currLeg.high, changeLevel = currLeg.low, prevContLevel = currLeg.high, nextChangeLevel = currLeg.low, state = TREND_CONTESTED)
+    else
+        currTrend := Trend.new(dir = DOWN, startTime = currLeg.startTime, endTime = currLeg.endTime, contLevel = currLeg.low, changeLevel = currLeg.high, prevContLevel = currLeg.low, nextChangeLevel = currLeg.high, state = TREND_CONTESTED)
+
+    for i = 1 to array.size(legs) - 1
+        currLeg := array.get(legs, i)
+        currTrend.endTime := currLeg.endTime
+
+        if currTrend.state == TREND_ESTABLISHED
+            if currTrend.dir == UP
+                if currLeg.dir == UP
+                    if currLeg.high > currTrend.contLevel
+                        currTrend.prevContLevel := currTrend.contLevel
+                        currTrend.contLevel := currLeg.high
+                        currTrend.changeLevel := currTrend.nextChangeLevel
+                        currTrend.nextChangeLevel := currTrend.contLevel
+                else // currLeg.dir == DOWN
+                    if currLeg.low < currTrend.changeLevel
+                        currTrend.sweepLevel := currLeg.low
+                        currTrend.nextChangeLevel := currLeg.low
+                        currTrend.state := TREND_CONTESTED
+                    else if currLeg.low < currTrend.nextChangeLevel
+                        currTrend.nextChangeLevel := currLeg.low
+            else // currTrend.dir == DOWN
+                if currLeg.dir == DOWN
+                    if currLeg.low < currTrend.contLevel
+                        currTrend.prevContLevel := currTrend.contLevel
+                        currTrend.contLevel := currLeg.low
+                        currTrend.changeLevel := currTrend.nextChangeLevel
+                        currTrend.nextChangeLevel := currTrend.contLevel
+                else // currLeg.dir == UP
+                    if currLeg.high > currTrend.changeLevel
+                        currTrend.sweepLevel := currLeg.high
+                        currTrend.nextChangeLevel := currLeg.high
+                        currTrend.state := TREND_CONTESTED
+                    else if currLeg.high > currTrend.nextChangeLevel
+                        currTrend.nextChangeLevel := currLeg.high
+        else // TREND_CONTESTED
+            if currTrend.dir == UP
+                if currLeg.dir == UP
+                    // The return leg fixes the sweep extreme as the reversal threshold.
+                    // The initially assumed trend has no sweep to promote.
+                    if not na(currTrend.sweepLevel)
+                        currTrend.changeLevel := currTrend.sweepLevel
+                        currTrend.sweepLevel := na
+                    if currLeg.high > currTrend.contLevel
+                        currTrend.prevContLevel := currTrend.contLevel
+                        currTrend.contLevel := currLeg.high
+                        currTrend.changeLevel := currTrend.nextChangeLevel
+                        currTrend.nextChangeLevel := currTrend.contLevel
+                        currTrend.state := TREND_ESTABLISHED
+                else // currLeg.dir == DOWN
+                    if currLeg.low < currTrend.changeLevel
+                        currTrend.changeLevel := currTrend.nextChangeLevel
+                        currTrend.nextChangeLevel := currLeg.low
+                        array.push(trends, currTrend)
+                        currTrend := Trend.new(dir = DOWN, startTime = currLeg.endTime, endTime = currLeg.endTime, contLevel = currLeg.low, prevContLevel = currTrend.changeLevel, changeLevel = currTrend.prevContLevel, nextChangeLevel = currTrend.changeLevel, state = TREND_ESTABLISHED)
+            else // currTrend.dir == DOWN
+                if currLeg.dir == DOWN
+                    // Preserve the breached level until a return leg exists.
+                    if not na(currTrend.sweepLevel)
+                        currTrend.changeLevel := currTrend.sweepLevel
+                        currTrend.sweepLevel := na
+                    if currLeg.low < currTrend.contLevel
+                        currTrend.prevContLevel := currTrend.contLevel
+                        currTrend.contLevel := currLeg.low
+                        currTrend.changeLevel := currTrend.nextChangeLevel
+                        currTrend.nextChangeLevel := currTrend.contLevel
+                        currTrend.state := TREND_ESTABLISHED
+                else // currLeg.dir == UP
+                    if currLeg.high > currTrend.changeLevel
+                        currTrend.changeLevel := currTrend.nextChangeLevel
+                        currTrend.nextChangeLevel := currLeg.high
+                        array.push(trends, currTrend)
+                        currTrend := Trend.new(dir = UP, startTime = currLeg.endTime, endTime = currLeg.endTime, contLevel = currLeg.high, prevContLevel = currTrend.changeLevel, changeLevel = currTrend.prevContLevel, nextChangeLevel = currTrend.changeLevel, state = TREND_ESTABLISHED)
+
+    array.push(trends, currTrend)
+    trends
+
+//******************************************************************************
+// Display Helpers
+clear_drawings() =>
+    for l in line.all
+        line.delete(l)
+    for b in box.all
+        box.delete(b)
+    for pl in polyline.all
+        polyline.delete(pl)
+
+draw_hoagies(hoagies) =>
+    if inputEnableHoagies and array.size(hoagies) > 0
+        hoagieColorLowOpacity = color.new(inputHoagieColor, inputHoagieOpacity)
+        for h in hoagies
+            box.new(left=h.startTime, top=h.high, right=h.endTime, bottom=h.low, bgcolor=hoagieColorLowOpacity, border_width = 0, xloc=xloc.bar_time)
+
+draw_legs(legs) =>
+    // Plot the legs as a new polyline
+    if inputEnableLegs and array.size(legs) > 0
+        legPoints = array.new<chart.point>()
+        // Manually add the first leg as two points
+        Leg firstLeg = legs.get(0)
+        if firstLeg.dir == UP
+            legPoints.push(chart.point.new(firstLeg.startTime, -1, firstLeg.low))
+            legPoints.push(chart.point.new(firstLeg.endTime, -1, firstLeg.high))
+        else
+            legPoints.push(chart.point.new(firstLeg.startTime, -1, firstLeg.high))
+            legPoints.push(chart.point.new(firstLeg.endTime, -1, firstLeg.low))
+
+        // Add remaining points from their end values
+        for i = 1 to legs.size() - 1
+            leg = legs.get(i)
+            if leg.dir == UP
+                legPoints.push(chart.point.new(leg.endTime, -1, leg.high))
+            else
+                legPoints.push(chart.point.new(leg.endTime, -1, leg.low))
+            
+        polyline.new(legPoints, xloc = xloc.bar_time, line_color = inputLegColor, line_width = inputLegWidth)
+
+draw_trends(trends) =>
+    if inputEnableTrends and array.size(trends) > 0
+        for i = 0 to trends.size() - 1
+            trend = array.get(trends, i)
+            if trend.dir == UP
+                line.new(trend.startTime, trend.prevContLevel, trend.endTime, trend.prevContLevel, color=inputTrendUpColor, xloc=xloc.bar_time)
+                line.new(trend.startTime, trend.changeLevel, trend.endTime, trend.changeLevel, color=inputTrendUpColor, xloc=xloc.bar_time)
+            else
+                line.new(trend.startTime, trend.prevContLevel, trend.endTime, trend.prevContLevel, color=inputTrendDownColor, xloc=xloc.bar_time)
+                line.new(trend.startTime, trend.changeLevel, trend.endTime, trend.changeLevel, color=inputTrendDownColor, xloc=xloc.bar_time)
+            // Draw the pending sweep only until a return leg promotes it.
+            if not na(trend.sweepLevel)
+                line.new(trend.startTime, trend.sweepLevel, trend.endTime, trend.sweepLevel, color=inputSweepColor, xloc=xloc.bar_time)
+
+
+//******************************************************************************
+// Script Main
+if is_last_bar()
+    // Filter the data based on the requested lookback (this is done for performance)
+    Bar[] barData = array.new<Bar>()
+    int lookbackInd = inputMaxBarsBack - 1
+    if lookbackInd < 0
+        lookbackInd := 0
+    for i = lookbackInd to 0
+        array.push(barData, Bar.new(time[i], open[i], high[i], low[i], close[i])) 
+
+    // Calculate Price Action
+    [barDirs, hoagies] = calculate_bars(barData)
+    legs = calculate_legs(barData, barDirs)
+    trends = calculate_trends(legs)
+
+    // Draw Price Action on the chart
+    clear_drawings()
+    draw_hoagies(hoagies)
+    draw_legs(legs)
+    draw_trends(trends)

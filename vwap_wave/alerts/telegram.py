@@ -92,3 +92,27 @@ class TelegramAlert:
             )
             return False
         return True
+
+
+def deliver_events(events, senders):
+    """Deliver engine events to configured Telegram topics."""
+    for event in events:
+        sender = senders.get(event["symbol"])
+        if sender is None:
+            continue
+        if event["kind"] == "sweep":
+            message = (
+                f"🔔 {event['symbol']} {event['timeframe']} sweep ({event['trend_direction']} trend)\n"
+                f"Candle: {event['candle_start']}\n"
+                f"Source minute: {event['source_minute']}\n"
+                f"Change level: {event['change_level']}\n"
+                f"Sweep level: {event['sweep_level']}"
+            )
+        else:
+            message = (
+                f"🔔 {event['symbol']} touched {event['condition']}\n"
+                f"Time: {event['source_minute']}\n"
+                f"Level: {event['level']}\n"
+                f"Bar range: {event['low']}–{event['high']}"
+            )
+        sender.send(message)

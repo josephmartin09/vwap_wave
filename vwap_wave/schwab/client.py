@@ -8,7 +8,7 @@ import httpx
 from schwab import auth, streaming
 
 from vwap_wave import log
-from vwap_wave.catalog import require_catalog_symbols
+from vwap_wave.config import require_catalog_symbols
 
 LOGGER = logging.getLogger(__name__)
 log.disable_sublogger("httpx2")

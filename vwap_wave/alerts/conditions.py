@@ -1,0 +1,13 @@
+from ..resampling import TIMEFRAMES
+from ..ta.initial_balance import INITIAL_BALANCE_COLUMNS
+from ..ta.volume_profile import VOLUME_PROFILE_COLUMNS
+from ..ta.vwap import SESSION_VWAP_COLUMNS
+
+INDICATOR_COLUMNS = tuple(
+    SESSION_VWAP_COLUMNS + INITIAL_BALANCE_COLUMNS + VOLUME_PROFILE_COLUMNS
+)
+SWEEP_CONDITIONS = tuple("sweep_" + timeframe for timeframe in TIMEFRAMES)
+ALERT_CONDITIONS = INDICATOR_COLUMNS + SWEEP_CONDITIONS
+
+
+DEFAULT_CONDITIONS = ()
