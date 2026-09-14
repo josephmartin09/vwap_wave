@@ -25,10 +25,22 @@ Interactive configuration: `python -m vwap_wave.cli`
 
 Replay: `python -m vwap_wave.replay --symbol /ES --conditions sweep_1h`
 
-Both modes default to no enabled alert conditions. In the live CLI,
+Both modes read default alert conditions from `config.json` in the current working directory:
+
+```json
+{
+  "default_conditions": ["sweep_1h"]
+}
+```
+
+These defaults apply to every symbol when an engine starts. Edit the list and
+restart to change the defaults; use `[]` to disable all default alerts. A missing
+file or key also defaults to no alerts. Invalid entries cause a startup error.
+The live CLI's `indicators` command lists supported condition names. In the live CLI,
 `set /ES sweep_1h` enables hourly sweep alerts; `set` replaces the symbol's
 conditions, and `set /ES` disables them. Replay's `--conditions` selects the same
-condition names without changing engine defaults. Replay never wires Telegram.
+condition names without changing the file; `--conditions` with no names disables
+alerts for that replay. Replay never wires Telegram.
 The replay candle and alert CSV formats remain unchanged; the alert CSV records
 sweep events. All event types are available through `Engine.process_bar()`.
 
@@ -65,8 +77,8 @@ engine = Engine(indicators={
 
 Omitting `indicators` creates these defaults; an empty mapping disables all
 calculations. Settings dictionaries can be passed directly to constructors,
-e.g. `VolumeProfileIndicator(**settings)`. Indicator configuration file loading
-is not implemented yet. Engine-level profile and Opus settings have moved to
+e.g. `VolumeProfileIndicator(**settings)`. The working directory's `config.json` selects alert
+conditions only. Engine-level profile and Opus settings have moved to
 these constructors; replay's `--opus-lookback` option remains available.
 
 The engine resamples once per requested timeframe. `IndicatorContext` contains

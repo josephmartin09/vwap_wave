@@ -18,7 +18,7 @@ import pandas as pd
 
 from ..engine import Engine
 from ..indicators import OpusIndicator, default_indicators
-from ..alerts import ALERT_CONDITIONS, DEFAULT_CONDITIONS
+from ..alerts import ALERT_CONDITIONS
 from ..resampling import OHLCV
 
 
@@ -53,7 +53,8 @@ def main():
     parser.add_argument("--alerts-output", type=Path, help="Defaults to OUTPUT_STEM_alerts.csv")
     parser.add_argument("--opus-lookback", type=int, default=2000,
                         help="Higher-timeframe candles used by Opus (Pine default: 2000)")
-    parser.add_argument("--conditions", nargs="*", choices=ALERT_CONDITIONS, default=DEFAULT_CONDITIONS)
+    parser.add_argument("--conditions", nargs="*", choices=ALERT_CONDITIONS,
+                        help="Override config.json defaults; supply no names to disable alerts")
     args = parser.parse_args()
     alerts_output = args.alerts_output or args.output.with_name(args.output.stem + "_alerts.csv")
     if args.output.resolve() == alerts_output.resolve():

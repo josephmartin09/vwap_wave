@@ -3,7 +3,8 @@ import logging
 import pandas as pd
 
 from ..config import DEFAULT_SCHEDULE
-from ..alerts import ALERT_CONDITIONS, DEFAULT_CONDITIONS
+from ..alerts import ALERT_CONDITIONS
+from ..config.alerts import load_default_conditions
 from ..resampling import TIMEFRAMES, resample_candles
 from ..indicators import Indicator, IndicatorContext, default_indicators
 from ..ta.opus import UP, Trend
@@ -18,7 +19,7 @@ class Engine:
         symbols=None,
         session_schedule=None,
         indicators=None,
-        alert_conditions=DEFAULT_CONDITIONS,
+        alert_conditions=None,
     ):
         self.session_schedule = DEFAULT_SCHEDULE if session_schedule is None else session_schedule
         requested_symbols = self.session_schedule.symbols if symbols is None else symbols
@@ -35,7 +36,7 @@ class Engine:
         self.recent_sweep_alerts = []
         self.recent_alerts = []
         self._last_sweep_alerted_bars = {}
-        alert_conditions = tuple(alert_conditions)
+        alert_conditions = load_default_conditions() if alert_conditions is None else tuple(alert_conditions)
         self._last_alerted_bars = {}
         self.alert_conditions = {}
         for symbol in self.symbols:
