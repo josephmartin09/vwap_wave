@@ -5,7 +5,7 @@ Example:
 
 Each completed minute is replayed at its close; ticks within that minute cannot
 be recreated. The current unclosed minute is excluded. Candle output includes
-forming hourly candles, and OUTPUT_STEM_alerts.csv records sweep alerts.
+forming 15-minute and hourly candles, and OUTPUT_STEM_alerts.csv records sweep alerts.
 Use matching historical coverage and Opus lookback when comparing with Pine.
 """
 
@@ -60,7 +60,9 @@ def main():
     if args.output.resolve() == alerts_output.resolve():
         parser.error("Candle output and alert output must be different files")
     indicators = default_indicators()
-    indicators["opus"] = OpusIndicator(lookback=args.opus_lookback)
+    for name, indicator in list(indicators.items()):
+        if isinstance(indicator, OpusIndicator):
+            indicators[name] = OpusIndicator(timeframe=indicator.timeframe, lookback=args.opus_lookback)
     app = Engine(symbols=[args.symbol], indicators=indicators, alert_conditions=args.conditions)
     # Capture the cutoff before fetching so every replayed minute is complete.
     cutoff = pd.Timestamp.now(tz="UTC").floor("min")

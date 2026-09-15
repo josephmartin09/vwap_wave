@@ -29,7 +29,7 @@ Both modes read default alert conditions from `config.json` in the current worki
 
 ```json
 {
-  "default_conditions": ["sweep_1h"]
+  "default_conditions": ["sweep_15m", "sweep_1h"]
 }
 ```
 
@@ -41,6 +41,11 @@ The live CLI's `indicators` command lists supported condition names. In the live
 conditions, and `set /ES` disables them. Replay's `--conditions` selects the same
 condition names without changing the file; `--conditions` with no names disables
 alerts for that replay. Replay never wires Telegram.
+Use `set /ES sweep_15m` for 15-minute sweeps, or
+`set /ES sweep_15m sweep_1h` for both timeframes. Both are enabled by default
+in the supplied `config.json`.
+Replay also accepts `--conditions sweep_15m sweep_1h`; `--opus-lookback` applies
+to both timeframes.
 The replay candle and alert CSV formats remain unchanged; the alert CSV records
 sweep events. All event types are available through `Engine.process_bar()`.
 
@@ -72,6 +77,7 @@ engine = Engine(indicators={
     "initial_balance": InitialBalanceIndicator(),
     "volume_profile": VolumeProfileIndicator(bins=100, value_area_percent=0.70),
     "opus": OpusIndicator(timeframe="1h", lookback=2000),
+    "opus_15m": OpusIndicator(timeframe="15m", lookback=2000),
 })
 ```
 
@@ -85,7 +91,7 @@ The engine resamples once per requested timeframe. `IndicatorContext` contains
 the symbol, candles at that timeframe, and session schedule. Inputs are read-only
 by convention; indicators are stateless and must handle empty candle frames.
 They receive only OHLCV input, so calculations do not depend on indicator order.
-The supported timeframes are currently `1min` and `1h`.
+The supported timeframes are currently `1min`, `15m`, and `1h`.
 
 `IndicatorResult` contains a DataFrame of named levels and optional detail such
 as a volume distribution or latest Opus trend. Read results through

@@ -1,7 +1,7 @@
 """Clock-aligned futures candles, including the current forming candle."""
 
 OHLCV = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
-TIMEFRAMES = ("1h",)
+TIMEFRAMES = ("15m", "1h")
 
 
 def resample_candles(frame, timeframe):
@@ -15,6 +15,7 @@ def resample_candles(frame, timeframe):
     if timeframe not in TIMEFRAMES:
         raise ValueError("Unsupported timeframe: " + timeframe)
     source = frame.loc[~frame.index.duplicated(keep="last"), list(OHLCV)].sort_index()
-    return source.resample(timeframe, closed="left", label="left").agg(OHLCV).dropna(
+    frequency = "15min" if timeframe == "15m" else timeframe
+    return source.resample(frequency, closed="left", label="left").agg(OHLCV).dropna(
         subset=["open", "high", "low", "close"]
     )

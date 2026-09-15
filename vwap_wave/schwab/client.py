@@ -182,7 +182,6 @@ class SchwabClient:
                                for field in ("open", "high", "low", "close")},
                             "volume": int(candle["volume"]),
                         }
-                        LOGGER.info("Historical polled 1m candle: %s", bar)
                         if on_bar is not None:
                             result = on_bar(bar)
                             if inspect.isawaitable(result):

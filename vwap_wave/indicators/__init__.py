@@ -12,4 +12,5 @@ def default_indicators():
         "initial_balance": InitialBalanceIndicator(),
         "volume_profile": VolumeProfileIndicator(),
         "opus": OpusIndicator(),
+        "opus_15m": OpusIndicator(timeframe="15m"),
     }

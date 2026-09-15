@@ -1,3 +1,3 @@
 {
-  "default_conditions": ["sweep_1h"]
+  "default_conditions": ["sweep_15m", "sweep_1h"]
 }
